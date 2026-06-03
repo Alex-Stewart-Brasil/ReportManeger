@@ -1,0 +1,7 @@
+[submodule "Warren/App"]
+	path = Warren/App
+	url = https://github.com/Alex-Stewart-Brasil/AppGem.git
+
+[submodule "Warren/DocGem"]
+	path = Warren/DocGem
+	url = https://github.com/Alex-Stewart-Brasil/DocGen.git
