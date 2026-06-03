@@ -36,7 +36,9 @@ jobs:
     if: needs.calculate-version.outputs.new_release_published == 'true'
     runs-on: ${{ matrix.os }}
 
+    continue-on-error: true
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: windows-latest
@@ -90,18 +92,21 @@ jobs:
   # --- PASSO 3: CRIAR A RELEASE E DISPONIBILIZAR OS ARQUIVOS ---
   publish-release:
     needs: [calculate-version, build-electron]
+    if: needs.calculate-version.outputs.new_release_published == 'true' && !cancelled()
     runs-on: ubuntu-latest
     steps:
       - name: Criar pasta de artefatos
         run: mkdir downloads
 
       - name: Baixar Artefato Windows
+        continue-on-error: true
         uses: actions/download-artifact@v4
         with:
           name: electron-build-win
           path: downloads
 
       - name: Baixar Artefato Linux
+        continue-on-error: true
         uses: actions/download-artifact@v4
         with:
           name: electron-build-linux
