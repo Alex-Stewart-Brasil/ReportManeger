@@ -1,0 +1,118 @@
+name: Build and Release Electron App (Multi-Platform)
+
+on:
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  # --- PASSO 1: CALCULAR A VERSÃO ---
+  calculate-version:
+    runs-on: ubuntu-latest
+    outputs:
+      new_release_published: ${{ steps.semantic_version.outputs.new_release_published }}
+      new_release_version: ${{ steps.semantic_version.outputs.new_release_version }}
+      new_release_notes: ${{ steps.semantic_version.outputs.new_release_notes }}
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Calcular Próxima Versão (Semantic Release)
+        id: semantic_version
+        uses: cycjimmy/semantic-release-action@v4
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # --- PASSO 2: COMPILAR OS BINÁRIOS (Windows e Linux em paralelo) ---
+  build-electron:
+    needs: calculate-version
+    if: needs.calculate-version.outputs.new_release_published == 'true'
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            platform: win
+            build_cmd: npx electron-builder --win portable
+            artifact_path: Warren/App/dist/*.exe
+          - os: ubuntu-latest
+            platform: linux
+            build_cmd: npx electron-builder --linux AppImage
+            artifact_path: Warren/App/dist/*.AppImage
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Configurar o Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: Warren/App/package-lock.json
+
+      - name: Instalar Dependências
+        working-directory: Warren/App
+        run: npm ci
+
+      - name: Executar Web Build
+        working-directory: Warren/App
+        run: npm run build
+
+      - name: Atualizar versão no package.json
+        working-directory: Warren/App
+        shell: bash
+        run: |
+          NEW_VER="${{ needs.calculate-version.outputs.new_release_version }}"
+          node -e "let p = require('./package.json'); p.version = '$NEW_VER'; require('fs').writeFileSync('./package.json', JSON.stringify(p, null, 2))"
+
+      - name: Compilar Executável Electron (${{ matrix.platform }})
+        working-directory: Warren/App
+        run: ${{ matrix.build_cmd }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Salvar Artefato
+        uses: actions/upload-artifact@v4
+        with:
+          name: electron-build-${{ matrix.platform }}
+          path: ${{ matrix.artifact_path }}
+          retention-days: 1
+
+  # --- PASSO 3: CRIAR A RELEASE E DISPONIBILIZAR OS ARQUIVOS ---
+  publish-release:
+    needs: [calculate-version, build-electron]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Criar pasta de artefatos
+        run: mkdir downloads
+
+      - name: Baixar Artefato Windows
+        uses: actions/download-artifact@v4
+        with:
+          name: electron-build-win
+          path: downloads
+
+      - name: Baixar Artefato Linux
+        uses: actions/download-artifact@v4
+        with:
+          name: electron-build-linux
+          path: downloads
+
+      - name: Publicar Release no GitHub
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.calculate-version.outputs.new_release_version }}
+          name: Release v${{ needs.calculate-version.outputs.new_release_version }}
+          body: ${{ needs.calculate-version.outputs.new_release_notes }}
+          files: downloads/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
