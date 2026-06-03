@@ -55,6 +55,8 @@ jobs:
     steps:
       - name: Checkout do código
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - name: Configurar o Node.js
         uses: actions/setup-node@v4
