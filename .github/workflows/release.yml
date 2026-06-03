@@ -35,18 +35,20 @@ jobs:
     needs: calculate-version
     if: needs.calculate-version.outputs.new_release_published == 'true'
     runs-on: ${{ matrix.os }}
-
     continue-on-error: true
+
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: windows-latest
             platform: win
+            npm_cmd: npm ci
             build_cmd: npx electron-builder --win portable
             artifact_path: Warren/App/dist/*.exe
           - os: ubuntu-latest
             platform: linux
+            npm_cmd: npm install --include=optional
             build_cmd: npx electron-builder --linux AppImage
             artifact_path: Warren/App/dist/*.AppImage
 
@@ -63,11 +65,7 @@ jobs:
 
       - name: Instalar Dependências
         working-directory: Warren/App
-        run: npm ci
-
-      - name: Executar Web Build
-        working-directory: Warren/App
-        run: npm run build
+        run: ${{ matrix.npm_cmd }}
 
       - name: Atualizar versão no package.json
         working-directory: Warren/App
@@ -75,6 +73,10 @@ jobs:
         run: |
           NEW_VER="${{ needs.calculate-version.outputs.new_release_version }}"
           node -e "let p = require('./package.json'); p.version = '$NEW_VER'; require('fs').writeFileSync('./package.json', JSON.stringify(p, null, 2))"
+
+      - name: Build React
+        working-directory: Warren/App
+        run: npm run build
 
       - name: Compilar Executável Electron (${{ matrix.platform }})
         working-directory: Warren/App
