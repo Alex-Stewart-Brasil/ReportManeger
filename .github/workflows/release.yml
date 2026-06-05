@@ -59,7 +59,12 @@ jobs:
           token: ${{ secrets.PAT_TOKEN }}
 
       - name: Inicializar submódulo Warren/App
-        run: git submodule update --init Warren/App
+        shell: bash
+        env:
+          PAT: ${{ secrets.PAT_TOKEN }}
+        run: |
+          git config --global url."https://x-access-token:${PAT}@github.com/".insteadOf "https://github.com/"
+          git submodule update --init Warren/App
 
       - name: Configurar o Node.js
         uses: actions/setup-node@v4
