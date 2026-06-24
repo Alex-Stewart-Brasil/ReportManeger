@@ -138,14 +138,15 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Salvar Artefatos Windows
-        uses: actions/upload-artifact@v4
+      - name: Publicar artefatos Windows na Release
+        uses: softprops/action-gh-release@v2
         with:
-          name: electron-build-win
-          path: |
+          tag_name: v${{ inputs.version }}
+          files: |
             Warren/App/dist/*.exe
             Warren/App/dist/*.msi
-          retention-days: 3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # --- LINUX: AppImage ---
   build-linux:
@@ -272,12 +273,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Salvar Artefatos Linux
-        uses: actions/upload-artifact@v4
+      - name: Publicar artefatos Linux na Release
+        uses: softprops/action-gh-release@v2
         with:
-          name: electron-build-linux
-          path: |
+          tag_name: v${{ inputs.version }}
+          files: |
             Warren/App/dist/*.AppImage
             Warren/App/dist/*.deb
             Warren/App/dist/*.rpm
-          retention-days: 3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -40,42 +40,28 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # --- BUILD DE TODOS OS ARTEFATOS ---
-  build:
+  # --- CRIAR RELEASE VAZIA ---
+  create-release:
     needs: calculate-version
     if: needs.calculate-version.outputs.new_release_published == 'true'
-    uses: ./.github/workflows/build-artifacts.yml
-    with:
-      version: ${{ needs.calculate-version.outputs.new_release_version }}
-    secrets: inherit
-
-  # --- PUBLICAR RELEASE (tolerante a falhas parciais) ---
-  publish-release:
-    needs: [calculate-version, build]
-    if: needs.calculate-version.outputs.new_release_published == 'true' && !cancelled()
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
-      - name: Baixar todos os artefatos de build
-        uses: actions/download-artifact@v4
-        with:
-          pattern: electron-build-*
-          path: downloads
-          merge-multiple: true
-        continue-on-error: true
-
-      - name: Listar artefatos disponíveis
-        run: |
-          echo "Artefatos para release:"
-          ls -lh downloads/ 2>/dev/null || echo "Nenhum artefato encontrado"
-
-      - name: Publicar Release no GitHub
+      - name: Criar Release no GitHub
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ needs.calculate-version.outputs.new_release_version }}
           name: Release v${{ needs.calculate-version.outputs.new_release_version }}
           body: ${{ needs.calculate-version.outputs.new_release_notes }}
           prerelease: ${{ github.ref_name == 'beta' || github.ref_name == 'alpha' }}
-          files: downloads/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # --- BUILD E UPLOAD DIRETO NA RELEASE ---
+  build:
+    needs: [calculate-version, create-release]
+    if: needs.calculate-version.outputs.new_release_published == 'true'
+    uses: ./.github/workflows/build-artifacts.yml
+    with:
+      version: ${{ needs.calculate-version.outputs.new_release_version }}
+    secrets: inherit
