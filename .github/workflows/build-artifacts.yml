@@ -6,10 +6,9 @@ on:
       version:
         required: true
         type: string
-      libreoffice-version:
-        required: false
-        type: string
-        default: "26.2.4"
+
+env:
+  LIBREOFFICE_VERSION: "26.2.4"
 
 jobs:
   # --- WINDOWS: portable exe ---
@@ -43,10 +42,18 @@ jobs:
           cache: 'npm'
           cache-dependency-path: Warren/App/package-lock.json
 
+      - name: Cache LibreOffice Windows
+        id: cache-lo-win
+        uses: actions/cache@v4
+        with:
+          path: Warren/DocGem/resources/LibreOffice/win
+          key: libreoffice-win-${{ env.LIBREOFFICE_VERSION }}
+
       - name: Baixar e extrair LibreOffice Windows
+        if: steps.cache-lo-win.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
-          $version = "${{ inputs.libreoffice-version }}"
+          $version = "${{ env.LIBREOFFICE_VERSION }}"
           $msi = "LibreOffice_${version}_Win_x86-64.msi"
           $url = "https://download.documentfoundation.org/libreoffice/stable/${version}/win/x86_64/${msi}"
           $tmpDir = "$env:RUNNER_TEMP\libreoffice"
@@ -154,7 +161,15 @@ jobs:
           cache: 'npm'
           cache-dependency-path: Warren/App/package-lock.json
 
+      - name: Cache LibreOffice Linux
+        id: cache-lo-linux
+        uses: actions/cache@v4
+        with:
+          path: Warren/DocGem/resources/LibreOffice/linux
+          key: libreoffice-linux-${{ env.LIBREOFFICE_VERSION }}
+
       - name: Baixar e extrair LibreOffice Linux
+        if: steps.cache-lo-linux.outputs.cache-hit != 'true'
         run: |
           ROOT="Warren/DocGem"
           DEST="$ROOT/resources/LibreOffice/linux"
