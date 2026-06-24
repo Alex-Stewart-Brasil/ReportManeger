@@ -171,7 +171,7 @@ jobs:
       - name: Baixar e extrair LibreOffice Linux
         if: steps.cache-lo-linux.outputs.cache-hit != 'true'
         run: |
-          ROOT="Warren/DocGem"
+          ROOT="$GITHUB_WORKSPACE/Warren/DocGem"
           DEST="$ROOT/resources/LibreOffice/linux"
           TMP="$(mktemp -d)"
 
