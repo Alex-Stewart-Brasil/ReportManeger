@@ -138,6 +138,22 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Compilar Electron (Windows dir)
+        continue-on-error: true
+        working-directory: Warren/App
+        run: npx electron-builder --win dir
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compactar pasta Windows
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $dir = "Warren/App/dist/win-unpacked"
+          if (Test-Path $dir) {
+            Compress-Archive -Path "$dir/*" -DestinationPath "Warren/App/dist/meu-app-${{ inputs.version }}-win-dir.zip"
+          }
+
       - name: Publicar artefatos Windows na Release
         uses: softprops/action-gh-release@v2
         with:
@@ -145,6 +161,7 @@ jobs:
           files: |
             Warren/App/dist/*.exe
             Warren/App/dist/*.msi
+            Warren/App/dist/*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -273,6 +290,21 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Compilar Electron (Linux dir)
+        continue-on-error: true
+        working-directory: Warren/App
+        run: npx electron-builder --linux dir
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compactar pasta Linux
+        continue-on-error: true
+        run: |
+          dir="Warren/App/dist/linux-unpacked"
+          if [ -d "$dir" ]; then
+            tar -czf "Warren/App/dist/meu-app-${{ inputs.version }}-linux-dir.tar.gz" -C "$dir" .
+          fi
+
       - name: Publicar artefatos Linux na Release
         uses: softprops/action-gh-release@v2
         with:
@@ -281,5 +313,6 @@ jobs:
             Warren/App/dist/*.AppImage
             Warren/App/dist/*.deb
             Warren/App/dist/*.rpm
+            Warren/App/dist/*.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
