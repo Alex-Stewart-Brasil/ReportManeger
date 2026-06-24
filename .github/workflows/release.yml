@@ -1,4 +1,4 @@
-name: Build and Release Electron App (Multi-Platform)
+name: Release
 
 on:
   push:
@@ -12,11 +12,8 @@ permissions:
   issues: write
   pull-requests: write
 
-env:
-  LIBREOFFICE_VERSION: "26.2.4"
-
 jobs:
-  # --- FASE 1: CALCULAR VERSÃO ---
+  # --- CALCULAR VERSÃO ---
   calculate-version:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -43,253 +40,29 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # --- FASE 2A: BUILD PONTA A PONTA WINDOWS ---
-  build-win:
+  # --- BUILD DE TODOS OS ARTEFATOS ---
+  build:
     needs: calculate-version
     if: needs.calculate-version.outputs.new_release_published == 'true'
-    runs-on: windows-latest
-    timeout-minutes: 45
-    continue-on-error: true
-    steps:
-      - name: Checkout do código
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.PAT_TOKEN }}
+    uses: ./.github/workflows/build-artifacts.yml
+    with:
+      version: ${{ needs.calculate-version.outputs.new_release_version }}
+    secrets: inherit
 
-      - name: Inicializar submódulos
-        shell: bash
-        env:
-          PAT: ${{ secrets.PAT_TOKEN }}
-        run: |
-          git config --global url."https://x-access-token:${PAT}@github.com/".insteadOf "https://github.com/"
-          git submodule update --init Warren/App Warren/DocGem
-
-      - name: Configurar .NET 8
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '8.0.x'
-
-      - name: Configurar Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: Warren/App/package-lock.json
-
-      - name: Baixar e extrair LibreOffice Windows
-        shell: pwsh
-        run: |
-          $version = "${{ env.LIBREOFFICE_VERSION }}"
-          $msi = "LibreOffice_${version}_Win_x86-64.msi"
-          $url = "https://download.documentfoundation.org/libreoffice/stable/${version}/win/x86_64/${msi}"
-          $tmpDir = "$env:RUNNER_TEMP\libreoffice"
-          $dest = "$env:GITHUB_WORKSPACE\Warren\DocGem\resources\LibreOffice\win"
-
-          New-Item -ItemType Directory -Force -Path $tmpDir | Out-Null
-          New-Item -ItemType Directory -Force -Path $dest | Out-Null
-
-          Write-Host "Baixando LibreOffice ${version}..."
-          Invoke-WebRequest -Uri $url -OutFile "$tmpDir\$msi" -UseBasicParsing
-
-          Write-Host "Extraindo MSI..."
-          Start-Process msiexec.exe -Wait -ArgumentList "/a `"$tmpDir\$msi`" /qn TARGETDIR=`"$tmpDir\extracted`""
-
-          $programDir = Get-ChildItem -Path "$tmpDir\extracted" -Recurse -Directory -Filter "program" | Select-Object -First 1
-          if (-not $programDir) {
-            Write-Host "Estrutura extraída:"
-            Get-ChildItem -Path "$tmpDir\extracted" -Recurse -Depth 3 | Select-Object FullName
-            Write-Error "Diretório 'program' não encontrado no MSI"
-            exit 1
-          }
-          $loRoot = $programDir.Parent.FullName
-
-          Write-Host "Copiando de $loRoot para resources..."
-          Copy-Item -Path "$loRoot\*" -Destination $dest -Recurse -Force
-
-          Remove-Item -Path $tmpDir -Recurse -Force
-          $size = (Get-ChildItem -Path $dest -Recurse | Measure-Object -Property Length -Sum).Sum / 1MB
-          Write-Host "LibreOffice extraído: $([math]::Round($size, 1)) MB"
-
-      - name: Compilar DocGem (win-x64)
-        working-directory: Warren/DocGem
-        run: dotnet publish -c Release -r win-x64 --self-contained true -o ./output/win/ --nologo
-
-      - name: Copiar DocGem para App
-        shell: bash
-        run: |
-          mkdir -p Warren/App/src/resources/DocGen/win
-          cp -r Warren/DocGem/output/win/* Warren/App/src/resources/DocGen/win/
-
-      - name: Instalar dependências do App
-        working-directory: Warren/App
-        run: npm ci
-
-      - name: Atualizar versão no package.json
-        working-directory: Warren/App
-        shell: bash
-        run: |
-          NEW_VER="${{ needs.calculate-version.outputs.new_release_version }}"
-          node -e "let p = require('./package.json'); p.version = '$NEW_VER'; require('fs').writeFileSync('./package.json', JSON.stringify(p, null, 2))"
-
-      - name: Build React
-        working-directory: Warren/App
-        run: npm run build
-
-      - name: Validar binários antes do empacotamento
-        shell: bash
-        run: |
-          echo "Verificando presença dos binários..."
-          test -f Warren/App/src/resources/DocGen/win/DocGen.exe || { echo "ERRO: DocGen.exe não encontrado"; exit 1; }
-          test -d Warren/App/src/resources/DocGen/win/LibreOffice || { echo "ERRO: Diretório LibreOffice não encontrado"; exit 1; }
-          echo "Binários validados com sucesso"
-
-      - name: Compilar Electron (Windows)
-        working-directory: Warren/App
-        run: npx electron-builder --win portable
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Salvar Artefato
-        uses: actions/upload-artifact@v4
-        with:
-          name: electron-build-win
-          path: Warren/App/dist/*.exe
-          retention-days: 3
-
-  # --- FASE 2B: BUILD PONTA A PONTA LINUX ---
-  build-linux:
-    needs: calculate-version
-    if: needs.calculate-version.outputs.new_release_published == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    continue-on-error: true
-    steps:
-      - name: Checkout do código
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.PAT_TOKEN }}
-
-      - name: Inicializar submódulos
-        shell: bash
-        env:
-          PAT: ${{ secrets.PAT_TOKEN }}
-        run: |
-          git config --global url."https://x-access-token:${PAT}@github.com/".insteadOf "https://github.com/"
-          git submodule update --init Warren/App Warren/DocGem
-
-      - name: Configurar .NET 8
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '8.0.x'
-
-      - name: Configurar Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: Warren/App/package-lock.json
-
-      - name: Baixar e extrair LibreOffice Linux
-        run: |
-          ROOT="Warren/DocGem"
-          DEST="$ROOT/resources/LibreOffice/linux"
-          TMP="$(mktemp -d)"
-
-          mkdir -p "$DEST"
-
-          echo "Baixando pacotes LibreOffice..."
-          cd "$TMP"
-          apt-get download \
-            libreoffice-writer \
-            libreoffice-core \
-            libreoffice-common \
-            --no-install-recommends 2>/dev/null
-
-          apt-get download $(apt-cache depends \
-            libreoffice-writer libreoffice-core libreoffice-common \
-            --recurse --no-recommends --no-suggests \
-            --no-conflicts --no-breaks --no-replaces --no-enhances \
-            | grep "^\w" | sort -u) 2>/dev/null || true
-
-          echo "Extraindo pacotes..."
-          for deb in "$TMP"/*.deb; do
-            dpkg -x "$deb" "$TMP/extracted/"
-          done
-
-          echo "Copiando para resources..."
-          cp -r "$TMP/extracted/usr/lib/libreoffice/"* "$DEST/"
-
-          cd "$GITHUB_WORKSPACE"
-          rm -rf "$TMP"
-          echo "LibreOffice extraído: $(du -sh "$DEST" | cut -f1)"
-
-      - name: Compilar DocGem (linux-x64)
-        working-directory: Warren/DocGem
-        run: dotnet publish -c Release -r linux-x64 --self-contained true -o ./output/linux/ --nologo
-
-      - name: Copiar DocGem para App
-        run: |
-          mkdir -p Warren/App/src/resources/DocGen/linux
-          cp -r Warren/DocGem/output/linux/* Warren/App/src/resources/DocGen/linux/
-
-      - name: Instalar dependências do App
-        working-directory: Warren/App
-        run: npm install --include=optional
-
-      - name: Atualizar versão no package.json
-        working-directory: Warren/App
-        shell: bash
-        run: |
-          NEW_VER="${{ needs.calculate-version.outputs.new_release_version }}"
-          node -e "let p = require('./package.json'); p.version = '$NEW_VER'; require('fs').writeFileSync('./package.json', JSON.stringify(p, null, 2))"
-
-      - name: Build React
-        working-directory: Warren/App
-        run: npm run build
-
-      - name: Validar binários antes do empacotamento
-        run: |
-          echo "Verificando presença dos binários..."
-          test -f Warren/App/src/resources/DocGen/linux/DocGen || { echo "ERRO: DocGen não encontrado"; exit 1; }
-          test -d Warren/App/src/resources/DocGen/linux/LibreOffice || { echo "ERRO: Diretório LibreOffice não encontrado"; exit 1; }
-          echo "Binários validados com sucesso"
-
-      - name: Compilar Electron (Linux)
-        working-directory: Warren/App
-        run: npx electron-builder --linux AppImage
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Salvar Artefato
-        uses: actions/upload-artifact@v4
-        with:
-          name: electron-build-linux
-          path: Warren/App/dist/*.AppImage
-          retention-days: 3
-
-  # --- FASE 3: PUBLICAR RELEASE (tolerante a falhas parciais) ---
+  # --- PUBLICAR RELEASE (tolerante a falhas parciais) ---
   publish-release:
-    needs: [calculate-version, build-win, build-linux]
+    needs: [calculate-version, build]
     if: needs.calculate-version.outputs.new_release_published == 'true' && !cancelled()
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Criar pasta de artefatos
-        run: mkdir downloads
-
-      - name: Baixar Artefato Windows
-        continue-on-error: true
+      - name: Baixar todos os artefatos de build
         uses: actions/download-artifact@v4
         with:
-          name: electron-build-win
+          pattern: electron-build-*
           path: downloads
-
-      - name: Baixar Artefato Linux
+          merge-multiple: true
         continue-on-error: true
-        uses: actions/download-artifact@v4
-        with:
-          name: electron-build-linux
-          path: downloads
 
       - name: Listar artefatos disponíveis
         run: |
