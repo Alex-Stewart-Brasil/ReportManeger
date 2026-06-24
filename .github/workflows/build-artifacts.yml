@@ -118,16 +118,33 @@ jobs:
           echo "Binários validados com sucesso"
 
       - name: Compilar Electron (Windows portable)
+        continue-on-error: true
         working-directory: Warren/App
         run: npx electron-builder --win portable
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Salvar Artefato
+      - name: Compilar Electron (Windows nsis)
+        continue-on-error: true
+        working-directory: Warren/App
+        run: npx electron-builder --win nsis
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compilar Electron (Windows msi)
+        continue-on-error: true
+        working-directory: Warren/App
+        run: npx electron-builder --win msi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Salvar Artefatos Windows
         uses: actions/upload-artifact@v4
         with:
           name: electron-build-win
-          path: Warren/App/dist/*.exe
+          path: |
+            Warren/App/dist/*.exe
+            Warren/App/dist/*.msi
           retention-days: 3
 
   # --- LINUX: AppImage ---
@@ -235,14 +252,32 @@ jobs:
           echo "Binários validados com sucesso"
 
       - name: Compilar Electron (Linux AppImage)
+        continue-on-error: true
         working-directory: Warren/App
         run: npx electron-builder --linux AppImage
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Salvar Artefato
+      - name: Compilar Electron (Linux deb)
+        continue-on-error: true
+        working-directory: Warren/App
+        run: npx electron-builder --linux deb
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compilar Electron (Linux rpm)
+        continue-on-error: true
+        working-directory: Warren/App
+        run: npx electron-builder --linux rpm
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Salvar Artefatos Linux
         uses: actions/upload-artifact@v4
         with:
           name: electron-build-linux
-          path: Warren/App/dist/*.AppImage
+          path: |
+            Warren/App/dist/*.AppImage
+            Warren/App/dist/*.deb
+            Warren/App/dist/*.rpm
           retention-days: 3
