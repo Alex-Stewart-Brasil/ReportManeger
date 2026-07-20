@@ -117,27 +117,27 @@ jobs:
           test -d Warren/App/src/resources/DocGen/win/LibreOffice || { echo "ERRO: Diretório LibreOffice não encontrado"; exit 1; }
           echo "Binários validados com sucesso"
 
-      - name: Compilar Electron (Windows portable)
-        continue-on-error: true
-        working-directory: Warren/App
-        run: npx electron-builder --win portable
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Compilar Electron (Windows nsis)
-        continue-on-error: true
-        working-directory: Warren/App
-        run: npx electron-builder --win nsis
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Compilar Electron (Windows msi)
-        continue-on-error: true
-        working-directory: Warren/App
-        run: npx electron-builder --win msi
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
+      # - name: Compilar Electron (Windows portable)
+      #   continue-on-error: true
+      #   working-directory: Warren/App
+      #   run: npx electron-builder --win portable
+      #   env:
+      #     GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # 
+      # - name: Compilar Electron (Windows nsis)
+      #   continue-on-error: true
+      #   working-directory: Warren/App
+      #   run: npx electron-builder --win nsis
+      #   env:
+      #     GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # 
+      # - name: Compilar Electron (Windows msi)
+      #   continue-on-error: true
+      #   working-directory: Warren/App
+      #   run: npx electron-builder --win msi
+      #   env:
+      #     GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
       - name: Compilar Electron (Windows dir)
         continue-on-error: true
         working-directory: Warren/App
@@ -269,27 +269,27 @@ jobs:
           test -d Warren/App/src/resources/DocGen/linux/LibreOffice || { echo "ERRO: Diretório LibreOffice não encontrado"; exit 1; }
           echo "Binários validados com sucesso"
 
-      - name: Compilar Electron (Linux AppImage)
-        continue-on-error: true
-        working-directory: Warren/App
-        run: npx electron-builder --linux AppImage
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Compilar Electron (Linux deb)
-        continue-on-error: true
-        working-directory: Warren/App
-        run: npx electron-builder --linux deb
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Compilar Electron (Linux rpm)
-        continue-on-error: true
-        working-directory: Warren/App
-        run: npx electron-builder --linux rpm
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
+      #- name: Compilar Electron (Linux AppImage)
+      #  continue-on-error: true
+      #  working-directory: Warren/App
+      #  run: npx electron-builder --linux AppImage
+      #  env:
+      #    GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #
+      #- name: Compilar Electron (Linux deb)
+      #  continue-on-error: true
+      #  working-directory: Warren/App
+      #  run: npx electron-builder --linux deb
+      #  env:
+      #    GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #
+      #- name: Compilar Electron (Linux rpm)
+      #  continue-on-error: true
+      #  working-directory: Warren/App
+      #  run: npx electron-builder --linux rpm
+      #  env:
+      #    GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #
       - name: Compilar Electron (Linux dir)
         continue-on-error: true
         working-directory: Warren/App
