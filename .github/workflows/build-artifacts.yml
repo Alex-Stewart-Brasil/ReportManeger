@@ -7,7 +7,7 @@ on:
         required: true
         type: string
 
-        
+
 jobs:
   # --- WINDOWS: nsis + portable ---
   build-win:
@@ -84,6 +84,8 @@ jobs:
           tag_name: v${{ inputs.version }}
           files: |
             Warren/App/dist/*.exe
+            Warren/App/dist/*.msi
+            Warren/App/dist/*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
