@@ -163,5 +163,7 @@ jobs:
           files: |
             Warren/App/dist/*.AppImage
             Warren/App/dist/*.deb
+            Warren/App/dist/*.rpm
+            Warren/App/dist/*.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
