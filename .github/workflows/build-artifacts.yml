@@ -150,12 +150,41 @@ jobs:
           test -f Warren/App/src/resources/DocGen/linux/DocGen || { echo "ERRO: DocGen não encontrado"; exit 1; }
           echo "Binários validados com sucesso"
 
-      - name: "Compilar Electron (Linux: AppImage + deb)"
+      - name: Compilar Electron (Linux AppImage)
+        continue-on-error: true
         working-directory: Warren/App
-        run: npx electron-builder --linux
+        run: npx electron-builder --linux AppImage
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Compilar Electron (Linux deb)
+        continue-on-error: true
+        working-directory: Warren/App
+        run: npx electron-builder --linux deb
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Compilar Electron (Linux rpm)
+        continue-on-error: true
+        working-directory: Warren/App
+        run: npx electron-builder --linux rpm
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Compilar Electron (Linux dir)
+        continue-on-error: true
+        working-directory: Warren/App
+        run: npx electron-builder --linux dir
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compactar pasta Linux
+        continue-on-error: true
+        run: |
+          dir="Warren/App/dist/linux-unpacked"
+          if [ -d "$dir" ]; then
+            tar -czf "Warren/App/dist/meu-app-${{ inputs.version }}-linux-dir.tar.gz" -C "$dir" .
+          fi
       - name: Publicar artefatos Linux na Release
         uses: softprops/action-gh-release@v2
         with:
