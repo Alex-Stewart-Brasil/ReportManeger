@@ -1,121 +1,94 @@
 # Integração PDF - Documentação
 
-## 📋 O que foi adicionado
+## Arquitetura atual
+
+A geração de PDF usa o **LibreOffice instalado no sistema do usuário** — não é mais embutido no pacote do app (isso respondia por ~90% do tamanho do instalador). O fluxo:
+
+1. `DocGen` gera o `.docx` normalmente (templates OpenXML).
+2. `DocGen` localiza o `soffice` do sistema (`LibreOfficeManager.cs`: `PATH`, diretórios padrão de instalação, `/opt/libreoffice*`, snap, flatpak).
+3. `DocGen` converte o `.docx` para PDF chamando o LibreOffice em modo headless (`DocToPdf.cs`).
+
+Uma abordagem alternativa via `mammoth` (docx→html) + `printToPDF` nativo do Electron foi avaliada e descartada — tem problemas conhecidos com cabeçalhos e imagens em documentos mais complexos.
 
 ### Backend (.NET)
-1. **Novo arquivo**: `Plugins/DocumentFormat/DocToPdf.cs`
-   - Conversor DOCX → PDF usando LibreOffice CLI
-   - Suporta Windows, Linux e macOS
-   - Encontra automaticamente o LibreOffice instalado
-   - Gerencia limpeza de arquivos temporários
-
-2. **Novos comandos RPC em `Program.cs`**:
-   - `gen-relatorio-pdf`: Gera PDF de relatório Minério
-   - `gen-agri-pdf`: Gera PDF de relatório Agricultura
+- `Plugins/DocumentFormat/LibreOfficeManager.cs`: localiza o `soffice` no sistema; expõe `CheckStatus()` (instalado/caminho/versão) e lança `LibreOfficeNotFoundException` quando não encontrado.
+- `Plugins/DocumentFormat/DocToPdf.cs`: conversão via LibreOffice CLI (`--headless --convert-to pdf`).
+- `Program/RpcServer.cs`: métodos RPC `gen-relatorio-pdf`/`gen-agri-pdf` (geram o `.docx` e convertem) e `check-libreoffice` (status sem gerar nada).
 
 ### Frontend (Electron + TypeScript)
-1. **Novos métodos em `DotnetClient`**:
-   - `genPdf()`: Chama gen-relatorio-pdf
-   - `genAgriPdf()`: Chama gen-agri-pdf
-
-2. **Novo arquivo**: `src/main/ipcs/GerarPDF/index.ts`
-   - Handlers IPC para `gerar-relatorio-pdf` e `gerar-agri-pdf`
-   - Mesma estrutura dos handlers existentes
-
-3. **Tipos**: `src/main/ipcs/GerarPDF/index.types.ts`
-   - Exporta canais e tipos
+- `src/main/gen/index.ts` (`DotnetClient`): `genPdf()`/`genAgriPdf()`, com suporte a callback de progresso.
+- `src/main/ipcs/GerarPDF/index.ts`: handlers IPC `gerar-relatorio-pdf`/`gerar-agri-pdf`.
+- `src/main/ipcs/LibreOffice/index.ts`: checagem independente (`verificar-libreoffice`) e atalho para abrir a página de download (`instalar-libreoffice`) — usado para orientar o usuário *antes* de tentar gerar um PDF, sem precisar subir o worker do DocGen.
 
 ## 🚀 Como usar
 
 ### No Renderer (React)
 ```typescript
-import { ipcRenderer } from 'electron'
-
-// Gerar PDF de Relatório
-const gerarRelatorioPdf = async (payload: RelatorioPayload) => {
-  try {
-    const result = await ipcRenderer.invoke('gerar-relatorio-pdf', payload)
-    console.log('PDF gerado em:', result)
-  } catch (error) {
-    console.error('Erro ao gerar PDF:', error)
-  }
+// Checar se está instalado (opcional, para orientar o usuário)
+const status = await window.ipc.verificarLibreOffice()
+if (!status.installed) {
+  await window.ipc.instalarLibreOffice() // abre a página de download
+  return
 }
 
-// Gerar PDF de Agricultura
-const gerarAgriPdf = async (payload: RelatorioPayload) => {
-  try {
-    const result = await ipcRenderer.invoke('gerar-agri-pdf', payload)
-    console.log('PDF gerado em:', result)
-  } catch (error) {
-    console.error('Erro ao gerar PDF:', error)
-  }
-}
+// Gerar PDF
+const pdfPath = await window.ipc.gerarRelatorioPdf(payload) // ou gerarAgriPdf
 ```
 
 ### Fluxo de funcionamento
-1. User clica em "Gerar PDF"
-2. Renderer invoca IPC handler (`gerar-relatorio-pdf` ou `gerar-agri-pdf`)
-3. Main process chama `DotnetClient.genPdf()` ou `DotnetClient.genAgriPdf()`
-4. DocGen recebe comando RPC (`gen-relatorio-pdf` ou `gen-agri-pdf`)
-5. DocGen gera DOCX normalmente
-6. DocGen chama LibreOffice para converter DOCX → PDF
-7. DocGen retorna o caminho do PDF
-8. Resultado retorna para o Renderer
+1. Usuário clica em "Gerar PDF".
+2. Renderer invoca `window.ipc.gerarRelatorioPdf`/`gerarAgriPdf`.
+3. Main process chama `DotnetClient.genPdf()`/`genAgriPdf()`.
+4. DocGen recebe o RPC (`gen-relatorio-pdf`/`gen-agri-pdf`), gera o `.docx`, localiza o LibreOffice do sistema e converte para PDF.
+5. Se o LibreOffice não for encontrado, o RPC retorna erro com mensagem clara — a UI pode usar `verificarLibreOffice`/`instalarLibreOffice` para guiar a instalação.
+6. Resultado (caminho do PDF) retorna para o Renderer.
 
 ## ⚙️ Pré-requisitos
 
-### LibreOffice deve estar instalado
+### LibreOffice deve estar instalado no sistema
 - **Windows**: `C:\Program Files\LibreOffice\` ou `C:\Program Files (x86)\LibreOffice\`
-- **Linux**: `/usr/bin/libreoffice` ou instalado via package manager
-- **macOS**: `/Applications/LibreOffice.app` ou instalado via Homebrew
+- **Linux**: `/usr/bin/soffice`, pacote via gerenciador, snap ou flatpak
+- **macOS**: `/Applications/LibreOffice.app`
 
-Instalar LibreOffice:
+Instalar:
 - Ubuntu/Debian: `sudo apt install libreoffice`
 - Fedora: `sudo dnf install libreoffice`
-- macOS: `brew install libreoffice`
-- Windows: Baixar de https://www.libreoffice.org
+- Windows/macOS: https://www.libreoffice.org/download/download/
 
-## 📁 Estrutura de arquivos criados
+## 📁 Estrutura de arquivos relevantes
 
 ```
 DocGem/
 ├── Plugins/DocumentFormat/
-│   ├── Doc.cs (existente)
-│   ├── DocXml.cs (existente)
-│   └── DocToPdf.cs (NOVO)
+│   ├── Doc.cs
+│   ├── DocXml.cs
+│   ├── DocToPdf.cs            # conversão via LibreOffice CLI
+│   └── LibreOfficeManager.cs  # localização do soffice no sistema
+└── Program/RpcServer.cs        # gen-relatorio-pdf, gen-agri-pdf, check-libreoffice
 
 App/src/main/
 ├── gen/
-│   └── index.ts (atualizado - novos métodos)
+│   └── index.ts                # DotnetClient: gen(), genAgri(), genPdf(), genAgriPdf()
 └── ipcs/
-    ├── index.ts (atualizado - novo import)
-    └── GerarPDF/ (NOVO)
-        ├── index.ts
-        └── index.types.ts
+    ├── GerarPDF/                # gerar-relatorio-pdf, gerar-agri-pdf
+    └── LibreOffice/             # verificar-libreoffice, instalar-libreoffice
 ```
 
 ## 🔍 Detalhes da implementação
 
 ### Conversão DOCX → PDF
-1. Gera DOCX normalmente usando templates existentes
-2. Cria diretório temporário
-3. Chama LibreOffice em modo headless: 
-   ```bash
-   libreoffice --headless --convert-to pdf --outdir /tmp/ documento.docx
-   ```
-4. Move o PDF gerado para o local desejado
-5. Limpa o diretório temporário
+1. Gera DOCX normalmente usando templates existentes.
+2. Localiza o `soffice` do sistema (com cache do caminho encontrado).
+3. Copia o `.docx` para um diretório de trabalho temporário e chama o LibreOffice em modo headless.
+4. Copia o PDF gerado para o local desejado.
 
 ### Tratamento de erros
-- Valida se arquivo DOCX existe
-- Valida se LibreOffice está instalado
-- Timeout de 5 minutos para conversão
-- Retorna mensagens de erro descritivas
+- Valida se o arquivo `.docx` existe.
+- Lança erro específico (`LIBREOFFICE_NOT_FOUND`) quando o LibreOffice não é encontrado no sistema.
+- Timeout de 5 minutos para a conversão.
 
 ## 📝 Próximos passos (opcional)
 
-1. **Adicionar opção de formato**: Permitir escolher entre DOCX e PDF na UI
-2. **Caching**: Manter DOCX temporário se usuário converter múltiplas vezes
-3. **Progresso**: Adicionar barra de progresso durante conversão
-4. **Qualidade**: Adicionar opções de resolução/qualidade do PDF
-5. **Validação**: Testar geração em diferentes layouts de relatório
+1. **UI de orientação**: usar `verificarLibreOffice`/`instalarLibreOffice` para mostrar um banner/modal quando o LibreOffice não estiver instalado, antes mesmo de tentar gerar o PDF.
+2. **Progresso**: já existe suporte a callback de progresso em `DotnetClient.genPdf`/`genAgriPdf` — falta consumir isso na UI.
+3. **Qualidade**: validar fidelidade de conversão em layouts de relatório mais complexos.

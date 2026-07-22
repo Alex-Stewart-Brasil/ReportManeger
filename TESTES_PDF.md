@@ -1,14 +1,16 @@
-# 🧪 Testes e Verificação da Integração PDF
+# 🧪 Testes e Verificação da Geração de PDF
+
+A geração de PDF usa o LibreOffice instalado no sistema do usuário (não é mais embutido no pacote). Ver [INTEGRACAO_PDF.md](INTEGRACAO_PDF.md) para a arquitetura completa.
 
 ## 1. Testes Básicos
 
 ### Teste 1.1: LibreOffice disponível
 ```bash
 # Linux/macOS
-which libreoffice
-libreoffice --version
+which soffice
+soffice --version
 
-# Windows (abra Power Shell)
+# Windows (PowerShell)
 Get-Command soffice
 ```
 
@@ -19,36 +21,35 @@ dotnet build
 # ✓ Deve compilar sem erros
 ```
 
-### Teste 1.3: Teste RPC direto (opcional)
+### Teste 1.3: Teste RPC direto
 ```bash
-# Inicie o DocGen
-./bin/Debug/net8.0/linux-x64/DocGen
+just -d Warren/DocGem gen-pdf-test
+# ✓ Deve retornar {"id":1,"ok":true,"outputPath":".../test-output.pdf"}
+```
 
-# Em outro terminal, envie um comando JSON:
-echo '{"id":1,"method":"gen-relatorio-pdf","params":{"config":{"outputPath":"/tmp","sobrescrever":true},"data":{...}}}' | ./bin/Debug/net8.0/linux-x64/DocGen
+### Teste 1.4: Checagem de status
+```bash
+echo '{"id":1,"method":"check-libreoffice","params":{}}' | ./output/linux/DocGen
+# ✓ Deve retornar {"id":1,"ok":true,"libreOffice":{"installed":true,"path":"...","version":"..."}}
 ```
 
 ## 2. Testes da UI
 
-### Teste 2.1: Hook funcionando
+### Teste 2.1: Checagem de instalação
 ```typescript
-// No console do DevTools (Ctrl+Shift+I)
-import { ipcRenderer } from 'electron'
+// DevTools console
+const status = await window.ipc.verificarLibreOffice()
+console.log(status) // { installed: boolean, path?: string, version?: string }
+```
 
-// Chamar o IPC diretamente
-ipcRenderer.invoke('gerar-relatorio-pdf', {
+### Teste 2.2: Geração via IPC
+```typescript
+window.ipc.gerarRelatorioPdf({
   title: "Teste",
   style: "RelatorioStyle1",
   // ... dados necessários
 }).then(result => console.log('Sucesso:', result))
   .catch(err => console.error('Erro:', err))
-```
-
-### Teste 2.2: Verificar canais
-```typescript
-// DevTools console
-const { ipcMain } = require('electron')
-console.log('Canais registrados:', Object.keys(ipcMain._events || {}))
 ```
 
 ## 3. Testes de Funcionalidade
@@ -74,57 +75,38 @@ console.log('Canais registrados:', Object.keys(ipcMain._events || {}))
 - [ ] Gerar PDF de Agricultura (AgriStyles)
 - [ ] Ambos devem funcionar
 
-### Teste 3.5: Tratamento de erros
-- [ ] Desinstalar LibreOffice temporariamente
+### Teste 3.5: LibreOffice ausente
+- [ ] Desinstalar LibreOffice temporariamente (ou renomear o binário)
 - [ ] Tentar gerar PDF
-- [ ] Deve mostrar erro: "LibreOffice não encontrado"
-- [ ] Reinstalar LibreOffice
+- [ ] Deve rejeitar com mensagem "LibreOffice não encontrado no sistema..."
+- [ ] `verificarLibreOffice()` deve retornar `installed: false`
+- [ ] Reinstalar LibreOffice e confirmar que volta a funcionar
 
 ## 4. Testes de Performance
 
 ### Teste 4.1: Tempo de conversão
 ```typescript
 const start = Date.now()
-const result = await ipcRenderer.invoke('gerar-relatorio-pdf', payload)
-const elapsed = Date.now() - start
-console.log(`Tempo de conversão: ${elapsed}ms`)
-// Esperado: 3-10 segundos (primeira vez) ou 2-5 segundos (seguintes)
+const result = await window.ipc.gerarRelatorioPdf(payload)
+console.log(`Tempo de conversão: ${Date.now() - start}ms`)
+// Esperado: alguns segundos (LibreOffice inicia um processo novo a cada conversão)
 ```
 
 ### Teste 4.2: Múltiplas gerações sequenciais
 ```typescript
 for (let i = 0; i < 5; i++) {
   const start = Date.now()
-  await ipcRenderer.invoke('gerar-relatorio-pdf', {
-    ...payload,
-    title: `Teste_${i}`
-  })
+  await window.ipc.gerarRelatorioPdf({ ...payload, title: `Teste_${i}` })
   console.log(`#${i+1}: ${Date.now() - start}ms`)
 }
-```
-
-### Teste 4.3: Gerações em paralelo
-```typescript
-const promises = Array.from({ length: 3 }, (_, i) =>
-  ipcRenderer.invoke('gerar-relatorio-pdf', {
-    ...payload,
-    title: `Paralelo_${i}`
-  })
-)
-const results = await Promise.all(promises)
-console.log('Todos completados:', results)
 ```
 
 ## 5. Testes de Qualidade do PDF
 
 ### Teste 5.1: Estrutura do PDF
 ```bash
-# Verificar se PDF é válido
 file relatório.pdf
-# Deve retoriar: "PDF document, version..."
-
-# Verificar com pdfinfo (se tiver)
-pdfinfo relatório.pdf
+# Deve retornar: "PDF document, version..."
 ```
 
 ### Teste 5.2: Conteúdo conservado
@@ -133,104 +115,35 @@ pdfinfo relatório.pdf
 - [ ] Verificar formatação está correta
 - [ ] Verificar quebras de página estão corretas
 
-### Teste 5.3: Tamanho do arquivo
-- [ ] DOCX: ~2-5 MB típico
-- [ ] PDF: ~3-8 MB típico (maior por compressão de imagens)
-- [ ] Ratio: PDF/DOCX < 2x
-
 ## 6. Testes de Integração
 
 ### Teste 6.1: Fluxo completo
 ```
 1. App aberto
 2. Preencher dados
-3. Clicar "Gerar DOCX" → OK?
+3. Clicar "Gerar Relatório" (docx) → OK?
 4. Clicar "Gerar PDF" → OK?
 5. Abrir ambos arquivos → conteúdo igual?
 6. Fechar e reabrir app
 7. Gerar novo PDF → funciona?
 ```
 
-### Teste 6.2: Diferentes estilos
-```typescript
-// Para cada RelatorioStyle disponível
-const styles = ['Estilo1', 'Estilo2', 'Estilo3']
-
-for (const style of styles) {
-  try {
-    const result = await ipcRenderer.invoke('gerar-relatorio-pdf', {
-      ...payload,
-      style
-    })
-    console.log(`✓ ${style}: ${result}`)
-  } catch (error) {
-    console.error(`✗ ${style}: ${error}`)
-  }
-}
-```
-
 ## 7. Testes de Robustez
 
-### Teste 7.1: Espaço em disco
-- [ ] Listar 50 PDFs grandes
-- [ ] Sistema não deve travar
-- [ ] Verificar limpeza de temporários
-
-### Teste 7.2: Caracteres especiais
-- [ ] Título: "Test_ã_é_ç_ü_ñ.pdf"
+### Teste 7.1: Caracteres especiais
+- [ ] Título com acentos/caracteres especiais
 - [ ] Caracteres acentuados no conteúdo
-- [ ] Emojis no conteúdo (opcional)
 
-### Teste 7.3: Paths longos
+### Teste 7.2: Paths longos
 - [ ] Desktop/Relatorios/Subfolder/SubSub/NomeMuitoLongoDePdf.pdf
 - [ ] Deve funcionar normalmente
-
-### Teste 7.4: Fechamento durante conversão
-- [ ] Iniciar conversão
-- [ ] Imediatamente fechar app
-- [ ] Verificar se limpeza funcionou
 
 ## 8. Checklist Final
 
 - [ ] Compilação sem erros
-- [ ] LibreOffice encontrado automaticamente
+- [ ] LibreOffice encontrado automaticamente no sistema
 - [ ] PDF gerado com sucesso
 - [ ] Conteúdo correto no PDF
 - [ ] Múltiplas gerações funcionam
-- [ ] Erros tratados corretamente
-- [ ] Performance aceitável
-- [ ] Sem vazamento de memória
-- [ ] Funcionando em Windows/Linux/Mac
-- [ ] Documentação clara
-
-## 9. Logs para análise
-
-Se algo não funcionar, ative logs:
-
-```typescript
-// DevTools Console
-localStorage.setItem('debug', '*')
-
-// Ou específico para DocGen
-localStorage.setItem('debug', '*:docgen:*')
-```
-
-Depois verifique:
-- `~/.config/Code/User/workspaceStorage/.../debug.log` 
-- Console do DevTools (F12)
-- Stderr do processo DocGen
-
-## 10. Rollback (se necessário)
-
-Se precisar reverter:
-
-```bash
-git status
-git diff
-git checkout -- .
-
-# Ou remover arquivos novos
-rm -rf Warren/App/src/main/ipcs/GerarPDF/
-rm Warren/App/src/renderer/src/hooks/useGerarPdf.ts
-rm Warren/App/src/renderer/src/components/GerarPdfButton.tsx
-```
+- [ ] Erro claro quando LibreOffice não está instalado
+- [ ] Funcionando em Windows/Linux

@@ -7,14 +7,11 @@ on:
         required: true
         type: string
 
-env:
-  LIBREOFFICE_VERSION: "26.2.4"
-
 jobs:
-  # --- WINDOWS: portable exe ---
+  # --- WINDOWS: nsis + portable ---
   build-win:
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 25
     continue-on-error: true
     steps:
       - name: Checkout do código
@@ -41,48 +38,6 @@ jobs:
           node-version: '20'
           cache: 'npm'
           cache-dependency-path: Warren/App/package-lock.json
-
-      - name: Cache LibreOffice Windows
-        id: cache-lo-win
-        uses: actions/cache@v4
-        with:
-          path: Warren/DocGem/resources/LibreOffice/win
-          key: libreoffice-win-${{ env.LIBREOFFICE_VERSION }}
-
-      - name: Baixar e extrair LibreOffice Windows
-        if: steps.cache-lo-win.outputs.cache-hit != 'true'
-        shell: pwsh
-        run: |
-          $version = "${{ env.LIBREOFFICE_VERSION }}"
-          $msi = "LibreOffice_${version}_Win_x86-64.msi"
-          $url = "https://download.documentfoundation.org/libreoffice/stable/${version}/win/x86_64/${msi}"
-          $tmpDir = "$env:RUNNER_TEMP\libreoffice"
-          $dest = "$env:GITHUB_WORKSPACE\Warren\DocGem\resources\LibreOffice\win"
-
-          New-Item -ItemType Directory -Force -Path $tmpDir | Out-Null
-          New-Item -ItemType Directory -Force -Path $dest | Out-Null
-
-          Write-Host "Baixando LibreOffice ${version}..."
-          Invoke-WebRequest -Uri $url -OutFile "$tmpDir\$msi" -UseBasicParsing
-
-          Write-Host "Extraindo MSI..."
-          Start-Process msiexec.exe -Wait -ArgumentList "/a `"$tmpDir\$msi`" /qn TARGETDIR=`"$tmpDir\extracted`""
-
-          $programDir = Get-ChildItem -Path "$tmpDir\extracted" -Recurse -Directory -Filter "program" | Select-Object -First 1
-          if (-not $programDir) {
-            Write-Host "Estrutura extraída:"
-            Get-ChildItem -Path "$tmpDir\extracted" -Recurse -Depth 3 | Select-Object FullName
-            Write-Error "Diretório 'program' não encontrado no MSI"
-            exit 1
-          }
-          $loRoot = $programDir.Parent.FullName
-
-          Write-Host "Copiando de $loRoot para resources..."
-          Copy-Item -Path "$loRoot\*" -Destination $dest -Recurse -Force
-
-          Remove-Item -Path $tmpDir -Recurse -Force
-          $size = (Get-ChildItem -Path $dest -Recurse | Measure-Object -Property Length -Sum).Sum / 1MB
-          Write-Host "LibreOffice extraído: $([math]::Round($size, 1)) MB"
 
       - name: Compilar DocGem (win-x64)
         working-directory: Warren/DocGem
@@ -114,45 +69,13 @@ jobs:
         run: |
           echo "Verificando presença dos binários..."
           test -f Warren/App/src/resources/DocGen/win/DocGen.exe || { echo "ERRO: DocGen.exe não encontrado"; exit 1; }
-          test -d Warren/App/src/resources/DocGen/win/LibreOffice || { echo "ERRO: Diretório LibreOffice não encontrado"; exit 1; }
           echo "Binários validados com sucesso"
 
-      # - name: Compilar Electron (Windows portable)
-      #   continue-on-error: true
-      #   working-directory: Warren/App
-      #   run: npx electron-builder --win portable
-      #   env:
-      #     GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      # 
-      # - name: Compilar Electron (Windows nsis)
-      #   continue-on-error: true
-      #   working-directory: Warren/App
-      #   run: npx electron-builder --win nsis
-      #   env:
-      #     GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      # 
-      # - name: Compilar Electron (Windows msi)
-      #   continue-on-error: true
-      #   working-directory: Warren/App
-      #   run: npx electron-builder --win msi
-      #   env:
-      #     GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Compilar Electron (Windows dir)
-        continue-on-error: true
+      - name: "Compilar Electron (Windows: nsis + portable)"
         working-directory: Warren/App
-        run: npx electron-builder --win dir
+        run: npx electron-builder --win
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Compactar pasta Windows
-        continue-on-error: true
-        shell: pwsh
-        run: |
-          $dir = "Warren/App/dist/win-unpacked"
-          if (Test-Path $dir) {
-            Compress-Archive -Path "$dir/*" -DestinationPath "Warren/App/dist/meu-app-${{ inputs.version }}-win-dir.zip"
-          }
 
       - name: Publicar artefatos Windows na Release
         uses: softprops/action-gh-release@v2
@@ -160,15 +83,13 @@ jobs:
           tag_name: v${{ inputs.version }}
           files: |
             Warren/App/dist/*.exe
-            Warren/App/dist/*.msi
-            Warren/App/dist/*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # --- LINUX: AppImage ---
+  # --- LINUX: AppImage + deb ---
   build-linux:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 25
     continue-on-error: true
     steps:
       - name: Checkout do código
@@ -195,48 +116,6 @@ jobs:
           node-version: '20'
           cache: 'npm'
           cache-dependency-path: Warren/App/package-lock.json
-
-      - name: Cache LibreOffice Linux
-        id: cache-lo-linux
-        uses: actions/cache@v4
-        with:
-          path: Warren/DocGem/resources/LibreOffice/linux
-          key: libreoffice-linux-${{ env.LIBREOFFICE_VERSION }}
-
-      - name: Baixar e extrair LibreOffice Linux
-        if: steps.cache-lo-linux.outputs.cache-hit != 'true'
-        run: |
-          ROOT="$GITHUB_WORKSPACE/Warren/DocGem"
-          DEST="$ROOT/resources/LibreOffice/linux"
-          TMP="$(mktemp -d)"
-
-          mkdir -p "$DEST"
-
-          echo "Baixando pacotes LibreOffice..."
-          cd "$TMP"
-          apt-get download \
-            libreoffice-writer \
-            libreoffice-core \
-            libreoffice-common \
-            --no-install-recommends 2>/dev/null
-
-          apt-get download $(apt-cache depends \
-            libreoffice-writer libreoffice-core libreoffice-common \
-            --recurse --no-recommends --no-suggests \
-            --no-conflicts --no-breaks --no-replaces --no-enhances \
-            | grep "^\w" | sort -u) 2>/dev/null || true
-
-          echo "Extraindo pacotes..."
-          for deb in "$TMP"/*.deb; do
-            dpkg -x "$deb" "$TMP/extracted/"
-          done
-
-          echo "Copiando para resources..."
-          cp -r "$TMP/extracted/usr/lib/libreoffice/"* "$DEST/"
-
-          cd "$GITHUB_WORKSPACE"
-          rm -rf "$TMP"
-          echo "LibreOffice extraído: $(du -sh "$DEST" | cut -f1)"
 
       - name: Compilar DocGem (linux-x64)
         working-directory: Warren/DocGem
@@ -266,44 +145,13 @@ jobs:
         run: |
           echo "Verificando presença dos binários..."
           test -f Warren/App/src/resources/DocGen/linux/DocGen || { echo "ERRO: DocGen não encontrado"; exit 1; }
-          test -d Warren/App/src/resources/DocGen/linux/LibreOffice || { echo "ERRO: Diretório LibreOffice não encontrado"; exit 1; }
           echo "Binários validados com sucesso"
 
-      #- name: Compilar Electron (Linux AppImage)
-      #  continue-on-error: true
-      #  working-directory: Warren/App
-      #  run: npx electron-builder --linux AppImage
-      #  env:
-      #    GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      #
-      #- name: Compilar Electron (Linux deb)
-      #  continue-on-error: true
-      #  working-directory: Warren/App
-      #  run: npx electron-builder --linux deb
-      #  env:
-      #    GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      #
-      #- name: Compilar Electron (Linux rpm)
-      #  continue-on-error: true
-      #  working-directory: Warren/App
-      #  run: npx electron-builder --linux rpm
-      #  env:
-      #    GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      #
-      - name: Compilar Electron (Linux dir)
-        continue-on-error: true
+      - name: "Compilar Electron (Linux: AppImage + deb)"
         working-directory: Warren/App
-        run: npx electron-builder --linux dir
+        run: npx electron-builder --linux
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Compactar pasta Linux
-        continue-on-error: true
-        run: |
-          dir="Warren/App/dist/linux-unpacked"
-          if [ -d "$dir" ]; then
-            tar -czf "Warren/App/dist/meu-app-${{ inputs.version }}-linux-dir.tar.gz" -C "$dir" .
-          fi
 
       - name: Publicar artefatos Linux na Release
         uses: softprops/action-gh-release@v2
@@ -312,7 +160,5 @@ jobs:
           files: |
             Warren/App/dist/*.AppImage
             Warren/App/dist/*.deb
-            Warren/App/dist/*.rpm
-            Warren/App/dist/*.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
