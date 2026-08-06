@@ -6,6 +6,7 @@ on:
       - master
       - beta
       - alpha
+      - omega
 
 permissions:
   contents: write
@@ -34,6 +35,7 @@ jobs:
           branches: |
             [
               'master',
+              { name: 'omega', prerelease: true },
               { name: 'beta', prerelease: true },
               { name: 'alpha', prerelease: true }
             ]
