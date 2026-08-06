@@ -40,6 +40,14 @@ jobs:
           cache: 'npm'
           cache-dependency-path: Warren/App/package-lock.json
 
+      - name: Cache electron-builder
+        uses: actions/cache@v4
+        with:
+          path: ~\AppData\Local\electron-builder\Cache
+          key: electron-builder-cache-windows-${{ hashFiles('Warren/App/package-lock.json') }}
+          restore-keys: |
+            electron-builder-cache-windows-
+
       - name: Compilar DocGem (win-x64)
         working-directory: Warren/DocGem
         run: dotnet publish -c Release -r win-x64 --self-contained true -o ./output/win/ --nologo
@@ -72,11 +80,20 @@ jobs:
           test -f Warren/App/src/resources/DocGen/win/DocGen.exe || { echo "ERRO: DocGen.exe não encontrado"; exit 1; }
           echo "Binários validados com sucesso"
 
-      - name: "Compilar Electron (Windows: nsis + portable)"
+      - name: "Compilar Electron"
         working-directory: Warren/App
         run: npx electron-builder --win
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compactar pasta Windows
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $dir = "Warren/App/dist/win-unpacked"
+          if (Test-Path $dir) {
+            Compress-Archive -Path "$dir\*" -DestinationPath "Warren/App/dist/meu-app-${{ inputs.version }}-windows-dir.zip" -Force
+          }
 
       - name: Publicar artefatos Windows na Release
         uses: softprops/action-gh-release@v2
@@ -150,31 +167,10 @@ jobs:
           test -f Warren/App/src/resources/DocGen/linux/DocGen || { echo "ERRO: DocGen não encontrado"; exit 1; }
           echo "Binários validados com sucesso"
 
-      - name: Compilar Electron (Linux AppImage)
+      - name: "Compilar Electron (Linux: AppImage + deb + rpm + dir)"
         continue-on-error: true
         working-directory: Warren/App
-        run: npx electron-builder --linux AppImage
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Compilar Electron (Linux deb)
-        continue-on-error: true
-        working-directory: Warren/App
-        run: npx electron-builder --linux deb
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Compilar Electron (Linux rpm)
-        continue-on-error: true
-        working-directory: Warren/App
-        run: npx electron-builder --linux rpm
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Compilar Electron (Linux dir)
-        continue-on-error: true
-        working-directory: Warren/App
-        run: npx electron-builder --linux dir
+        run: npx electron-builder --linux AppImage deb rpm dir
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
