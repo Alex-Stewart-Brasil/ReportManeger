@@ -193,4 +193,107 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-          
+  # --- MACOS: dmg + zip (universal x64+arm64) ---
+  build-mac:
+    runs-on: macos-latest
+    timeout-minutes: 25
+    continue-on-error: true
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.PAT_TOKEN }}
+
+      - name: Inicializar submódulos
+        shell: bash
+        env:
+          PAT: ${{ secrets.PAT_TOKEN }}
+        run: |
+          git config --global url."https://x-access-token:${PAT}@github.com/".insteadOf "https://github.com/"
+          git submodule update --init Warren/App Warren/DocGem
+
+      - name: Configurar .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: Warren/App/package-lock.json
+
+      - name: Cache electron-builder
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/electron-builder
+          key: electron-builder-cache-macos-${{ hashFiles('Warren/App/package-lock.json') }}
+          restore-keys: |
+            electron-builder-cache-macos-
+
+      - name: Compilar DocGem (osx-x64)
+        working-directory: Warren/DocGem
+        run: dotnet publish -c Release -r osx-x64 --self-contained true -o ./output/osx-x64/ --nologo
+
+      - name: Compilar DocGem (osx-arm64)
+        working-directory: Warren/DocGem
+        run: dotnet publish -c Release -r osx-arm64 --self-contained true -o ./output/osx-arm64/ --nologo
+
+      - name: Gerar binário universal (lipo)
+        working-directory: Warren/DocGem/output
+        run: |
+          mkdir -p mac
+          cp -r osx-arm64/. mac/
+          find osx-x64 -type f | while read -r f; do
+            rel="${f#osx-x64/}"
+            other="osx-arm64/$rel"
+            if [ -f "$other" ] && file "$f" | grep -q "Mach-O"; then
+              lipo -create "$f" "$other" -output "mac/$rel"
+            fi
+          done
+          chmod +x mac/DocGen
+
+      - name: Copiar DocGem para App
+        run: |
+          mkdir -p Warren/App/src/resources/DocGen/mac
+          cp -r Warren/DocGem/output/mac/* Warren/App/src/resources/DocGen/mac/
+          chmod +x Warren/App/src/resources/DocGen/mac/DocGen
+
+      - name: Instalar dependências do App
+        working-directory: Warren/App
+        run: npm install --include=optional
+
+      - name: Atualizar versão no package.json
+        working-directory: Warren/App
+        shell: bash
+        run: |
+          NEW_VER="${{ inputs.version }}"
+          node -e "let p = require('./package.json'); p.version = '$NEW_VER'; require('fs').writeFileSync('./package.json', JSON.stringify(p, null, 2))"
+
+      - name: Build React
+        working-directory: Warren/App
+        run: npm run build
+
+      - name: Validar binários antes do empacotamento
+        run: |
+          echo "Verificando presença dos binários..."
+          test -f Warren/App/src/resources/DocGen/mac/DocGen || { echo "ERRO: DocGen não encontrado"; exit 1; }
+          echo "Binários validados com sucesso"
+
+      - name: "Compilar Electron (macOS: dmg + zip universal)"
+        working-directory: Warren/App
+        run: npx electron-builder --mac
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Publicar artefatos macOS na Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ inputs.version }}
+          files: |
+            Warren/App/dist/*.dmg
+            Warren/App/dist/*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
